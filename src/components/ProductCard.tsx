@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Star, ShoppingCart, Heart, Plus, Minus, ArrowRight, CheckCircle } from 'lucide-react';
+import { Star, ShoppingCart, Heart, Plus, Minus, ArrowRight, CheckCircle, AlertCircle } from 'lucide-react';
 import { Product } from '../types';
 import { useCart } from '../context/CartContext';
 
@@ -15,6 +15,7 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
   const [showCheckoutButton, setShowCheckoutButton] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   // Get current quantity of this product in cart
   const cartItem = items.find(item => item.product.id === product.id);
@@ -37,6 +38,8 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
     setJustAdded(true);
     
     try {
+      const token = localStorage.getItem('token');
+      console.log('Token being sent:', token);
       addToCart(product, quantity);
       setShowCheckoutButton(true);
       
@@ -65,14 +68,16 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
   };
 
   return (
-    <Link to={`/product/${product.id}`} className="group">
+    <div className="group">
       <div className="bg-white rounded-xl shadow-card hover:shadow-card-hover transition-all duration-300 hover:-translate-y-1 overflow-hidden">
         <div className="relative">
-          <img
-            src={product.image}
-            alt={product.name}
-            className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
-          />
+          <Link to={`/product/${product.id}`}>
+            <img
+              src={product.image}
+              alt={product.name}
+              className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
+            />
+          </Link>
           
           {product.originalPrice && (
             <div className="absolute top-3 left-3 bg-accent text-white px-2 py-1 rounded-full text-xs font-semibold">
@@ -93,9 +98,9 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
         </div>
         
         <div className="p-4">
-          <h3 className="font-heading font-semibold text-neutral-dark mb-2 group-hover:text-primary transition-colors">
+          <Link to={`/product/${product.id}`} className="font-heading font-semibold text-neutral-dark mb-2 group-hover:text-primary transition-colors">
             {product.name}
-          </h3>
+          </Link>
           
           <div className="flex items-center mb-2">
             <div className="flex items-center">
@@ -198,11 +203,7 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
             <div className={`transition-all duration-300 overflow-hidden ${
               showCheckoutButton ? 'max-h-20 opacity-100' : 'max-h-0 opacity-0'
             }`}>
-              <Link
-                to="/checkout"
-                onClick={(e) => e.stopPropagation()}
-                className="w-full bg-secondary hover:bg-yellow-500 text-white px-4 py-3 rounded-lg transition-all duration-200 flex items-center justify-center text-sm font-semibold shadow-sm hover:shadow-md transform hover:scale-[1.02] active:scale-[0.98]"
-              >
+              <Link to="/checkout" className="w-full bg-secondary hover:bg-secondary-dark text-white px-4 py-3 rounded-lg transition-all duration-200 flex items-center justify-center text-sm font-semibold shadow-sm hover:shadow-md transform hover:scale-[1.02] active:scale-[0.98]">
                 <ArrowRight className="h-4 w-4 mr-2" />
                 Proceed to Checkout
               </Link>
@@ -214,25 +215,15 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
               <span className="text-sm text-accent font-medium">Out of Stock</span>
             </div>
           )}
+
+          {loginError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 flex items-center">
+              <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
+              <p className="text-red-800 text-sm font-medium">{loginError}</p>
+            </div>
+          )}
         </div>
       </div>
-      
-      <style jsx>{`
-        @keyframes fade-in {
-          from {
-            opacity: 0;
-            transform: translateY(-10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        .animate-fade-in {
-          animation: fade-in 0.3s ease-out;
-        }
-      `}</style>
-    </Link>
+    </div>
   );
 }

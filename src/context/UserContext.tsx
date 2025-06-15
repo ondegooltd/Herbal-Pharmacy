@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode, useEffect, useState } from 'react';
 import { User, Address, Order } from '../types';
 
 interface UserState {
@@ -23,6 +23,7 @@ interface UserContextType extends UserState {
   addOrder: (order: Order) => void;
   requestPasswordReset: (email: string) => Promise<void>;
   clearError: () => void;
+  updateOrderStatus: (orderId: string, status: Order['status']) => Promise<void>;
 }
 
 interface SignupData {
@@ -557,6 +558,39 @@ export function UserProvider({ children }: UserProviderProps) {
     dispatch({ type: 'CLEAR_ERROR' });
   };
 
+  const updateOrderStatus = async (orderId: string, status: Order['status']) => {
+    if (!state.user) return;
+
+    try {
+      // Update order in local storage
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      const orderIndex = userData.orders.findIndex((order: Order) => order.id === orderId);
+      
+      if (orderIndex !== -1) {
+        userData.orders[orderIndex].status = status;
+        localStorage.setItem('user', JSON.stringify(userData));
+        dispatch({ type: 'UPDATE_PROFILE', payload: { orders: userData.orders } });
+      }
+
+      // Update order in backend if available
+      try {
+        await fetch(`${import.meta.env.VITE_API_URL}/api/orders/${orderId}/status`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${userData.token}`
+          },
+          body: JSON.stringify({ status })
+        });
+      } catch (error) {
+        console.error('Failed to update order status in backend:', error);
+      }
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      throw error;
+    }
+  };
+
   return (
     <UserContext.Provider value={{
       ...state,
@@ -571,7 +605,8 @@ export function UserProvider({ children }: UserProviderProps) {
       deleteAddress,
       addOrder,
       requestPasswordReset,
-      clearError
+      clearError,
+      updateOrderStatus
     }}>
       {children}
     </UserContext.Provider>

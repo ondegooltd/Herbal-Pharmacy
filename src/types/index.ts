@@ -34,7 +34,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  phone: string;
+  phone?: string;
   password?: string; // Optional because social login users don't have passwords
   profilePicture?: string;
   address: Address;
@@ -56,6 +56,9 @@ export interface User {
     smsNotifications: boolean;
     emailNotifications: boolean;
   };
+  role: 'user' | 'admin';
+  token?: string;
+  orders: Order[];
 }
 
 export interface Address {
@@ -75,14 +78,14 @@ export interface Order {
   shippingCost: number;
   tax: number;
   total: number;
-  status: 'pending' | 'confirmed' | 'shipped' | 'delivered';
+  status: 'pending' | 'paid' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
   createdAt: Date;
   shippingAddress: Address;
   shippingMethod: 'standard' | 'express';
-  paymentMethod: string;
-  paymentReference?: string;
-  trackingNumber?: string;
-  estimatedDelivery?: string;
+  paymentMethod: 'card' | 'mobile-money' | 'cash';
+  paymentReference: string;
+  trackingNumber: string;
+  estimatedDelivery: string;
 }
 
 export interface PaymentMethod {

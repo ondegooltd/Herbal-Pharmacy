@@ -24,6 +24,7 @@ import Support from './pages/Support';
 import Blog from './pages/Blog';
 import Policy from './pages/Policy';
 import PaymentVerification from './pages/PaymentVerification';
+import PaymentVerify from './pages/PaymentVerify';
 import useScrollToTop from './hooks/useScrollToTop';
 
 function ScrollToTopHandler() {
@@ -55,7 +56,7 @@ function App() {
                   <Route path="/policy" element={<Policy />} />
                   <Route path="/terms" element={<Policy />} />
                   <Route path="/privacy" element={<Policy />} />
-                  <Route path="/payment/verify" element={<PaymentVerification />} />
+                  <Route path="/payment/verify" element={<PaymentVerify />} />
                   
                   {/* Auth Routes */}
                   <Route path="/forgot-password" element={<ForgotPassword />} />

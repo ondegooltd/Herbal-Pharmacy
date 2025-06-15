@@ -14,7 +14,8 @@ import {
 import { useCart } from '../context/CartContext';
 import { useUser } from '../context/UserContext';
 import { shippingService } from '../services/shippingService';
-import { paymentService } from '../services/paymentService';
+import { PaymentService } from '../services/paymentService';
+import { API_URL } from '../config';
 import type { CartItem, Order } from '../types';
 
 export default function Checkout() {
@@ -59,6 +60,10 @@ export default function Checkout() {
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [mobileMoneyInstructions, setMobileMoneyInstructions] = useState('');
+  const [showMobileMoneyModal, setShowMobileMoneyModal] = useState(false);
 
   // Calculate shipping costs when address or items change
   useEffect(() => {
@@ -157,119 +162,182 @@ export default function Checkout() {
     }
   };
 
-  const handleSubmit = async () => {
-    if (validateStep(2)) {
-      const selectedShippingCost = formData.shippingMethod === 'express' ? shippingCosts.express : shippingCosts.standard;
-      const selectedEstimatedDelivery = formData.shippingMethod === 'express' ? estimatedDelivery.express : estimatedDelivery.standard;
-      const subtotal = total;
-      const shippingCost = selectedShippingCost;
-      const tax = subtotal * 0.08;
-      const finalTotal = subtotal + shippingCost + tax;
+  const createShippingAddress = async (addressData: any) => {
+    const token = localStorage.getItem('token');
+    const transformedData = {
+      street: addressData.street,
+      city: addressData.city,
+      state: addressData.state,
+      country: addressData.country || 'Ghana',
+      zipCode: addressData.postalCode,
+      isDefault: false
+    };
 
-      try {
-        // Create order first
-        const order: Order = {
-          id: Date.now().toString(),
-          userId: user?.id || 'guest',
-          items,
-          subtotal,
-          shippingCost,
-          tax,
-          total: finalTotal,
-          status: 'pending' as const,
-          createdAt: new Date(),
-          shippingAddress: {
-            id: Date.now().toString(),
-            street: formData.address,
-            city: formData.city,
-            state: formData.state,
-            zipCode: formData.zipCode,
-            country: formData.country
-          },
-          shippingMethod: formData.shippingMethod as 'standard' | 'express',
-          paymentMethod: formData.paymentMethod,
-          paymentReference: '', // Initialize with empty string
-          trackingNumber: `TN${Date.now()}`,
-          estimatedDelivery: selectedEstimatedDelivery
-        };
+    const response = await fetch(`${API_URL}/api/addresses`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(transformedData),
+    });
 
-        // Check if Paystack is configured
-        const isPaystackConfigured = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY && import.meta.env.VITE_PAYSTACK_SECRET_KEY;
+    if (!response.ok) {
+      throw new Error('Failed to create shipping address');
+    }
 
-        if (isPaystackConfigured && formData.paymentMethod === 'card') {
-          // Initialize payment with Paystack
-          const paymentResponse = await paymentService.initializePayment(
-            finalTotal,
-            formData.email,
-            items,
-            {
-              orderId: order.id,
-              shippingMethod: formData.shippingMethod,
-              paymentMethod: formData.paymentMethod
-            }
-          );
+    return response.json();
+  };
 
-          if (!paymentResponse.success) {
-            throw new Error(paymentResponse.message || 'Payment initialization failed');
-          }
-
-          // Add payment reference to order
-          order.paymentReference = paymentResponse.reference;
-          addOrder(order);
-          clearCart();
-          
-          // Redirect to Paystack payment page
-          window.location.href = `https://checkout.paystack.com/${paymentResponse.reference}`;
-        } else if (formData.paymentMethod === 'mobile-money') {
-          // Handle mobile money payment
-          order.paymentReference = `MM${Date.now()}`;
-          addOrder(order);
-          clearCart();
-
-          // Show success message and redirect to orders page
-          setErrors(prev => ({
-            ...prev,
-            payment: 'Your order has been placed successfully! You will receive payment instructions via SMS.'
-          }));
-
-          setTimeout(() => {
-            navigate('/account?tab=orders', {
-              state: {
-                orderId: order.id,
-                status: 'pending_payment'
-              }
-            });
-          }, 3000);
-        } else {
-          // Handle cash on delivery
-          order.paymentReference = `COD${Date.now()}`;
-          addOrder(order);
-          clearCart();
-
-          // Show success message and redirect to orders page
-          setErrors(prev => ({
-            ...prev,
-            payment: 'Your order has been placed successfully! You will pay on delivery.'
-          }));
-
-          setTimeout(() => {
-            navigate('/account?tab=orders', {
-              state: {
-                orderId: order.id,
-                status: 'pending_payment'
-              }
-            });
-          }, 3000);
-        }
-      } catch (error) {
-        console.error('Payment error:', error);
-        setErrors(prev => ({
-          ...prev,
-          payment: error instanceof Error 
-            ? error.message 
-            : 'Unable to process payment. Please try a different payment method or contact support.'
-        }));
+  const createOrder = async (orderData: {
+    items: CartItem[]
+    shippingAddress: {
+      street: string
+      city: string
+      state: string
+      country: string
+      postalCode: string
+    }
+    paymentMethod: string
+    shippingCost: number
+    total: number
+    shippingMethod: 'standard' | 'express'
+  }): Promise<Order | null> => {
+    try {
+      // First create the shipping address
+      const shippingAddressId = await createShippingAddress(orderData.shippingAddress);
+      if (!shippingAddressId) {
+        throw new Error('Failed to create shipping address');
       }
+
+      // Transform the data to match the backend's expected format
+      const transformedData = {
+        items: orderData.items.map(item => ({
+          productId: item.product.id,
+          quantity: item.quantity
+        })),
+        shippingAddressId,
+        shippingMethod: orderData.shippingMethod === 'express' ? 'EXPRESS' : 'STANDARD',
+        paymentMethod: orderData.paymentMethod.toUpperCase()
+      };
+
+      const response = await fetch(`${API_URL}/api/orders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        credentials: 'include',
+        body: JSON.stringify(transformedData)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create order');
+      }
+
+      const data = await response.json();
+      return data as Order;
+    } catch (error) {
+      console.error('Create order error:', error);
+      return null;
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError('');
+
+    try {
+      // Create order first
+      const order = await createOrder({
+        items: items,
+        shippingAddress: {
+          street: formData.address,
+          city: formData.city,
+          state: formData.state,
+          country: formData.country,
+          postalCode: formData.zipCode
+        },
+        paymentMethod: formData.paymentMethod,
+        shippingCost: formData.shippingMethod === 'express' ? shippingCosts.express : shippingCosts.standard,
+        total: total + (formData.shippingMethod === 'express' ? shippingCosts.express : shippingCosts.standard),
+        shippingMethod: formData.shippingMethod as 'standard' | 'express'
+      });
+
+      if (!order) {
+        throw new Error('Failed to create order');
+      }
+
+      if (formData.paymentMethod === 'card') {
+        // Initialize payment with Paystack
+        const result = await PaymentService.initializePayment(
+          order.total,
+          user?.email || '',
+          order.id,
+          {
+            orderId: order.id,
+            items: order.items.map(item => ({
+              id: item.product.id,
+              name: item.product.name,
+              quantity: item.quantity,
+              price: item.product.price
+            }))
+          }
+        );
+
+        if (!result.success) {
+          throw new Error(result.message);
+        }
+
+        // Initialize Paystack inline checkout
+        const handler = (window as any).PaystackPop.setup({
+          key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY,
+          email: user?.email,
+          amount: order.total * 100, // Convert to pesewas
+          currency: 'GHS',
+          ref: result.data.reference,
+          callback: (response: any) => {
+            // Handle successful payment
+            clearCart();
+            navigate(`/payment/verify?reference=${response.reference}&orderId=${order.id}`);
+          },
+          onClose: () => {
+            // Handle payment modal close
+            setError('Payment was cancelled');
+          }
+        });
+
+        handler.openIframe();
+      } else if (formData.paymentMethod === 'mobile-money') {
+        // Handle mobile money payment
+        const result = await PaymentService.initializePayment(
+          order.total,
+          user?.email || '',
+          order.id,
+          {
+            orderId: order.id,
+            paymentMethod: 'mobile_money'
+          }
+        );
+
+        if (!result.success) {
+          throw new Error(result.message);
+        }
+
+        // Show mobile money instructions
+        setMobileMoneyInstructions(result.data.instructions);
+        setShowMobileMoneyModal(true);
+      } else {
+        // Cash on delivery
+        clearCart();
+        navigate(`/payment/verify?orderId=${order.id}`);
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to process payment');
+    } finally {
+      setIsLoading(false);
     }
   };
 

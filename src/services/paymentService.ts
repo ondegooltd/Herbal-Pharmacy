@@ -1,106 +1,55 @@
-import { CartItem } from '../types';
-
-interface PaystackConfig {
-  publicKey: string;
-  secretKey: string;
-}
+import { API_URL } from '../config'
 
 interface PaymentResponse {
-  success: boolean;
-  reference: string;
-  message: string;
+  success: boolean
+  message: string
+  data?: any
 }
 
-class PaymentService {
-  private config: PaystackConfig;
-
-  constructor(config: PaystackConfig) {
-    this.config = config;
-  }
-
-  async initializePayment(
-    amount: number,
-    email: string,
-    items: CartItem[],
-    metadata: Record<string, any> = {}
-  ): Promise<PaymentResponse> {
+export class PaymentService {
+  private static async request(endpoint: string, options: RequestInit = {}): Promise<PaymentResponse> {
     try {
-      const response = await fetch('https://api.paystack.co/transaction/initialize', {
-        method: 'POST',
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        ...options,
         headers: {
-          'Authorization': `Bearer ${this.config.secretKey}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...options.headers,
         },
-        body: JSON.stringify({
-          amount: amount * 100, // Convert to pesewas
-          email,
-          currency: 'GHS',
-          callback_url: `${window.location.origin}/payment/verify`,
-          metadata: {
-            ...metadata,
-            items: items.map(item => ({
-              id: item.product.id,
-              name: item.product.name,
-              quantity: item.quantity,
-              price: item.product.price
-            }))
-          }
-        })
-      });
+        credentials: 'include',
+      })
 
-      const data = await response.json();
-      
-      if (!data.status) {
-        throw new Error(data.message || 'Payment initialization failed');
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Payment request failed')
       }
 
-      return {
-        success: true,
-        reference: data.data.reference,
-        message: 'Payment initialized successfully'
-      };
+      return data
     } catch (error) {
-      console.error('Payment initialization error:', error);
+      console.error('Payment request error:', error)
       return {
         success: false,
-        reference: '',
-        message: error instanceof Error ? error.message : 'Payment initialization failed'
-      };
+        message: error instanceof Error ? error.message : 'Payment request failed'
+      }
     }
   }
 
-  async verifyPayment(reference: string): Promise<PaymentResponse> {
-    try {
-      const response = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${this.config.secretKey}`
-        }
-      });
-
-      const data = await response.json();
-      
-      if (!data.status) {
-        throw new Error(data.message || 'Payment verification failed');
-      }
-
-      return {
-        success: data.data.status === 'success',
-        reference: data.data.reference,
-        message: data.data.gateway_response
-      };
-    } catch (error) {
-      console.error('Payment verification error:', error);
-      return {
-        success: false,
-        reference,
-        message: error instanceof Error ? error.message : 'Payment verification failed'
-      };
-    }
+  static async initializePayment(amount: number, email: string, orderId: string, metadata?: any): Promise<PaymentResponse> {
+    return this.request('/api/payments/initialize', {
+      method: 'POST',
+      body: JSON.stringify({
+        amount,
+        email,
+        orderId,
+        metadata
+      })
+    })
   }
-}
 
-export const paymentService = new PaymentService({
-  publicKey: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '',
-  secretKey: import.meta.env.VITE_PAYSTACK_SECRET_KEY || ''
-}); 
+  static async verifyPayment(reference: string): Promise<PaymentResponse> {
+    return this.request('/api/payments/verify', {
+      method: 'POST',
+      body: JSON.stringify({ reference })
+    })
+  }
+} 
