@@ -215,8 +215,13 @@ export default function AuthForm({ mode }: AuthFormProps) {
         
         if (user) {
           setShowSuccess(true);
+          // Redirect based on user role
           setTimeout(() => {
-            navigate(from, { replace: true });
+            if (user.role === 'admin') {
+              navigate('/admin/dashboard', { replace: true });
+            } else {
+              navigate(from, { replace: true });
+            }
           }, 2000);
         }
       }

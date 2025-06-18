@@ -25,6 +25,8 @@ import Blog from './pages/Blog';
 import Policy from './pages/Policy';
 import PaymentVerification from './pages/PaymentVerification';
 import PaymentVerify from './pages/PaymentVerify';
+import AdminDashboard from './pages/AdminDashboard';
+import AdminLogin from './pages/AdminLogin';
 import useScrollToTop from './hooks/useScrollToTop';
 
 function ScrollToTopHandler() {
@@ -73,6 +75,17 @@ function App() {
                     element={
                       <ProtectedRoute requireAuth={false}>
                         <Signin />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  
+                  {/* Admin Routes */}
+                  <Route path="/admin/login" element={<AdminLogin />} />
+                  <Route 
+                    path="/admin/dashboard" 
+                    element={
+                      <ProtectedRoute>
+                        <AdminDashboard />
                       </ProtectedRoute>
                     } 
                   />
